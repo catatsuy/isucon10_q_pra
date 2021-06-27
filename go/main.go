@@ -12,12 +12,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"github.com/labstack/gommon/log"
+	proxy "github.com/shogo82148/go-sql-proxy"
 )
 
 const Limit = 20
@@ -218,8 +220,13 @@ func getEnv(key, defaultValue string) string {
 
 //ConnectDB isuumoデータベースに接続する
 func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
-	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
+	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?interpolateParams=true", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
 	return sqlx.Open("mysql", dsn)
+}
+
+func (mc *MySQLConnectionEnv) ConnectDBProxy() (*sqlx.DB, error) {
+	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?interpolateParams=true", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
+	return sqlx.Open("mysql:trace", dsn)
 }
 
 func init() {
@@ -239,14 +246,25 @@ func init() {
 }
 
 func main() {
+	var isDev bool
+	if os.Getenv("DEV") == "1" {
+		isDev = true
+	}
 	// Echo instance
 	e := echo.New()
-	e.Debug = true
-	e.Logger.SetLevel(log.DEBUG)
+
+	if isDev {
+		e.Debug = true
+		e.Logger.SetLevel(log.DEBUG)
+		e.Use(middleware.Logger())
+		e.Use(middleware.Recover())
+	} else {
+		e.Logger.SetLevel(log.ERROR)
+	}
 
 	// Middleware
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+	//e.Use(middleware.Logger())
+	//e.Use(middleware.Recover())
 
 	// Initialize
 	e.POST("/initialize", initialize)
@@ -274,11 +292,43 @@ func main() {
 	mySQLConnectionData = NewMySQLConnectionEnv()
 
 	var err error
-	db, err = mySQLConnectionData.ConnectDB()
+
+	if isDev {
+		proxy.RegisterTracer()
+
+		db, err = mySQLConnectionData.ConnectDBProxy()
+	} else {
+		db, err = mySQLConnectionData.ConnectDB()
+	}
+
 	if err != nil {
 		e.Logger.Fatalf("DB connection failed : %v", err)
 	}
-	db.SetMaxOpenConns(10)
+
+	maxConns := os.Getenv("DB_MAXOPENCONNS")
+	maxConnsInt := 25
+	if maxConns != "" {
+		maxConnsInt, err = strconv.Atoi(maxConns)
+		if err != nil {
+			panic(err)
+		}
+	}
+	db.SetMaxOpenConns(maxConnsInt)
+	db.SetMaxIdleConns(maxConnsInt * 2)
+	// db.SetConnMaxLifetime(time.Minute * 2)
+	db.SetConnMaxIdleTime(time.Minute * 2)
+
+	for {
+		err := db.Ping()
+		// _, err := db.Exec("SELECT 42")
+		if err == nil {
+			break
+		}
+		log.Print(err)
+		time.Sleep(time.Second * 2)
+	}
+	log.Print("DB ready!")
+
 	defer db.Close()
 
 	// Start server
