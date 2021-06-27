@@ -20,6 +20,9 @@ CREATE TABLE isuumo.estate
     popularity  INTEGER             NOT NULL
 );
 
+create index estate_door_height_index
+    on estate (door_height);
+
 CREATE TABLE isuumo.chair
 (
     id          INTEGER         NOT NULL PRIMARY KEY,
@@ -36,3 +39,4 @@ CREATE TABLE isuumo.chair
     popularity  INTEGER         NOT NULL,
     stock       INTEGER         NOT NULL
 );
+
