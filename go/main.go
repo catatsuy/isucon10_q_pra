@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"github.com/labstack/gommon/log"
+	proxy "github.com/shogo82148/go-sql-proxy"
 )
 
 const Limit = 20
@@ -218,8 +219,13 @@ func getEnv(key, defaultValue string) string {
 
 //ConnectDB isuumoデータベースに接続する
 func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
-	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
+	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?interpolateParams=true", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
 	return sqlx.Open("mysql", dsn)
+}
+
+func (mc *MySQLConnectionEnv) ConnectDBProxy() (*sqlx.DB, error) {
+	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?interpolateParams=true", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
+	return sqlx.Open("mysql:trace", dsn)
 }
 
 func init() {
@@ -274,7 +280,20 @@ func main() {
 	mySQLConnectionData = NewMySQLConnectionEnv()
 
 	var err error
-	db, err = mySQLConnectionData.ConnectDB()
+
+	var isDev bool
+	if os.Getenv("DEV") == "1" {
+		isDev = true
+	}
+
+	if isDev {
+		proxy.RegisterTracer()
+
+		db, err = mySQLConnectionData.ConnectDBProxy()
+	} else {
+		db, err = mySQLConnectionData.ConnectDB()
+	}
+
 	if err != nil {
 		e.Logger.Fatalf("DB connection failed : %v", err)
 	}
