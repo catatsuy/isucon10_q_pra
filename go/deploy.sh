@@ -1,5 +1,3 @@
-## deploy.sh
-
 #!/bin/bash
 
 set -x
