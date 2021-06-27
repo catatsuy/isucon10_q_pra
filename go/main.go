@@ -930,19 +930,19 @@ func searchEstateNazotte(c echo.Context) error {
 	estatesInPolygon := []Estate{}
 	polygon := coordinates.getPolygon()
 
+	i := 0
 	for _, estate := range estatesInBoundingBox {
 		if polygon.Contains(geo.NewPoint(estate.Latitude, estate.Longitude)) {
 			estatesInPolygon = append(estatesInPolygon, estate)
+			i++
+			if i == NazotteLimit {
+				break
+			}
 		}
 	}
 
 	var re EstateSearchResponse
-	re.Estates = []Estate{}
-	if len(estatesInPolygon) > NazotteLimit {
-		re.Estates = estatesInPolygon[:NazotteLimit]
-	} else {
-		re.Estates = estatesInPolygon
-	}
+	re.Estates = estatesInPolygon
 	re.Count = int64(len(re.Estates))
 
 	return c.JSON(http.StatusOK, re)
