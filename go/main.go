@@ -246,14 +246,25 @@ func init() {
 }
 
 func main() {
+	var isDev bool
+	if os.Getenv("DEV") == "1" {
+		isDev = true
+	}
 	// Echo instance
 	e := echo.New()
-	e.Debug = true
-	e.Logger.SetLevel(log.DEBUG)
+
+	if isDev {
+		e.Debug = true
+		e.Logger.SetLevel(log.DEBUG)
+		e.Use(middleware.Logger())
+		e.Use(middleware.Recover())
+	} else {
+		e.Logger.SetLevel(log.ERROR)
+	}
 
 	// Middleware
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+	//e.Use(middleware.Logger())
+	//e.Use(middleware.Recover())
 
 	// Initialize
 	e.POST("/initialize", initialize)
@@ -281,11 +292,6 @@ func main() {
 	mySQLConnectionData = NewMySQLConnectionEnv()
 
 	var err error
-
-	var isDev bool
-	if os.Getenv("DEV") == "1" {
-		isDev = true
-	}
 
 	if isDev {
 		proxy.RegisterTracer()
